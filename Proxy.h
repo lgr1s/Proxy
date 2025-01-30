@@ -12,7 +12,8 @@
 static constexpr int LISTEN_PORT = 3307;
 static constexpr int SERVER_PORT = 3306;
 static const char* SERVER_HOST = "127.0.0.1";
-
+static constexpr int usefulLoad = 5;
+static constexpr char COM_QUERY = 0x03;
 //Overlapped buffer size for a single call of WSASend/WSARecv
 static constexpr int BUFFER_SIZE = 4096;
 
@@ -30,9 +31,15 @@ struct IO_CONTEXT {
 	OVERLAPPED overlapped;
 	SOCKET socket;
 	WSABUF wsabuf;
-	char buffer[BUFFER_SIZE];
+	std::vector<char> buffer;
 	IOOperationType operation;
 	DWORD TransferredData;
+
+	IO_CONTEXT() : socket(INVALID_SOCKET), operation(IOOperationType::ReadClient), TransferredData(0) {
+		buffer.resize(BUFFER_SIZE);
+		wsabuf.buf = buffer.data();
+		wsabuf.len = static_cast<ULONG>(buffer.size());
+	}
 };
 
 //Context of a single connection

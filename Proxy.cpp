@@ -1,4 +1,4 @@
-#include "Proxy.h"
+﻿#include "Proxy.h"
 #include <thread>
 #include <mutex>
 #include <iostream>
@@ -17,8 +17,8 @@ void InitializeContext(IO_CONTEXT& ctx, IOOperationType op, SOCKET s) {
 
 	ctx.operation = op;
 	ctx.socket = s;
-	ctx.wsabuf.buf = ctx.buffer;
-	ctx.wsabuf.len = BUFFER_SIZE;
+	ctx.wsabuf.buf = ctx.buffer.data();
+	ctx.wsabuf.len = ctx.buffer.size();
 	ctx.TransferredData = 0;
 }
 
@@ -48,13 +48,15 @@ bool Send(IO_CONTEXT& ctx, const char* data, int len) {
 		}
 	}
 	return true;
+	//ctx.buffer.clear();
 }
 
 bool Receive(IO_CONTEXT& ctx) {
+	
 	DWORD flags = 0;
 	DWORD bytesRecvd = 0;
-	ctx.wsabuf.buf = ctx.buffer;
-	ctx.wsabuf.len = BUFFER_SIZE;
+	ctx.wsabuf.buf = ctx.buffer.data();
+	ctx.wsabuf.len = ctx.buffer.size();
 
 	if (WSARecv(ctx.socket, &ctx.wsabuf, 1, &bytesRecvd, &flags, &ctx.overlapped, NULL) == SOCKET_ERROR)
 	{
@@ -66,6 +68,7 @@ bool Receive(IO_CONTEXT& ctx) {
 		}
 	}
 	return true;
+	//ctx.buffer.clear();
 }
 
 void CloseConnection(CONNECTION_CONTEXT* connCont)
@@ -94,8 +97,12 @@ void SendToServer(CONNECTION_CONTEXT* connCont, std::vector<char>& packet) {
 	IO_CONTEXT& serverWrite = connCont->ServerWriteContext;
 	InitializeContext(serverWrite, IOOperationType::WriteServer, connCont->ServerSocket);
 
-	memcpy(serverWrite.buffer, packet.data(), packet.size());
-	if (!Send(serverWrite, serverWrite.buffer, static_cast<int>(packet.size()))) {
+	if (serverWrite.buffer.size() < packet.size()) {
+		serverWrite.buffer.resize(packet.size());
+	}
+
+	memcpy(serverWrite.buffer.data(), packet.data(), packet.size());
+	if (!Send(serverWrite, serverWrite.buffer.data(), static_cast<int>(packet.size()))) {
 		CloseConnection(connCont);
 	}
 }
@@ -114,10 +121,8 @@ void ProcessClientBuffer(CONNECTION_CONTEXT* connCont) {
 		}
 
 		std::vector<char> packet(data.begin(), data.begin() + totalLen);
-		short usefulLoad = 5;
 		if (packet.size() >= usefulLoad) {
 			unsigned char command = static_cast<unsigned char>(packet[4]);
-			char COM_QUERY = 0x03;
 			if (command == COM_QUERY) {
 				unsigned int sqlLen = packetLen - 1;
 				if (sqlLen > 0 && (MySqlHeaderSize + 1 + sqlLen) <= packet.size()) {
@@ -136,8 +141,12 @@ void SendToClient(CONNECTION_CONTEXT* connCont, std::vector<char>& packet) {
 	IO_CONTEXT& clientWrite = connCont->ClientWriteContext;
 	InitializeContext(clientWrite, IOOperationType::WriteClient, connCont->ClientSocket);
 
-	memcpy(clientWrite.buffer, packet.data(), packet.size());
-	if (!Send(clientWrite, clientWrite.buffer, static_cast<int>(packet.size()))) {
+	if (clientWrite.buffer.size() < packet.size()) {
+		clientWrite.buffer.resize(packet.size());
+	}
+
+	memcpy(clientWrite.buffer.data(), packet.data(), packet.size());
+	if (!Send(clientWrite, clientWrite.buffer.data(), static_cast<int>(packet.size()))) {
 		CloseConnection(connCont);
 	}
 }
@@ -200,7 +209,7 @@ void WorkerThread() {
 
 		case IOOperationType::ReadClient: {
 
-			connCont->clientBuff.insert(connCont->clientBuff.end(), IOCont->buffer, IOCont->buffer + bytesTransferred);
+			connCont->clientBuff.insert(connCont->clientBuff.end(), IOCont->buffer.data(), IOCont->buffer.data() + bytesTransferred);
 			ProcessClientBuffer(connCont);
 
 			InitializeContext(connCont->ClientReadContext, IOOperationType::ReadClient, connCont->ClientSocket);
@@ -214,7 +223,7 @@ void WorkerThread() {
 		case IOOperationType::ReadServer: {
 
 			//resend server response to client
-			connCont->serverBuff.insert(connCont->serverBuff.end(), IOCont->buffer, IOCont->buffer + bytesTransferred);
+			connCont->serverBuff.insert(connCont->serverBuff.end(), IOCont->buffer.data(), IOCont->buffer.data() + bytesTransferred);
 			ProcessServerBuffer(connCont);
 			InitializeContext(connCont->ServerReadContext, IOOperationType::ReadServer, connCont->ServerSocket);
 			Receive(connCont->ServerReadContext);
